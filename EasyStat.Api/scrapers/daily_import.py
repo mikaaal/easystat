@@ -13,6 +13,13 @@ import traceback
 from pathlib import Path
 from typing import Dict, List, Optional
 
+# Get the absolute paths
+SCRIPT_DIR = Path(__file__).parent.resolve()
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+DB_PATH = SCRIPT_DIR.parent / "goldenstat.db"
+URLS_DIR = PROJECT_ROOT / "current_match_urls"
+LOGS_DIR = PROJECT_ROOT / "import_logs"
+
 # Import våra moduler
 from smart_season_importer import SmartSeasonImporter
 
@@ -21,7 +28,7 @@ class AutomatedDailyImport:
 
     def __init__(self):
         self.timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.log_dir = Path("import_logs")
+        self.log_dir = LOGS_DIR
         self.log_dir.mkdir(exist_ok=True)
         self.log_file = self.log_dir / f"daily_import_{self.timestamp}.json"
 
@@ -57,7 +64,7 @@ class AutomatedDailyImport:
         """Kör fullständig automatiserad import av alla divisioner för aktuell säsong"""
         try:
             # Hitta alla match-url filer i current_match_urls katalogen
-            url_files = list(Path("current_match_urls").glob("*_match_urls*.txt"))
+            url_files = list(URLS_DIR.glob("*_match_urls*.txt"))
 
             if not url_files:
                 print("[ERROR] Inga match-url filer hittades i current_match_urls katalogen")
@@ -90,7 +97,7 @@ class AutomatedDailyImport:
             print(f"  [DIV] Division: {file_info['division_id']} ({file_info['division_name']})")
 
             # Skapa smart importer
-            smart_importer = SmartSeasonImporter("goldenstat.db")
+            smart_importer = SmartSeasonImporter(str(DB_PATH))
 
             # Kör importen med smart player matching
             result = smart_importer.import_from_url_file_smart(

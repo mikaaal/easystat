@@ -6,13 +6,20 @@ Uses the new API endpoints for importing match data
 import requests
 import json
 import time
+from pathlib import Path
 from itertools import combinations
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 from database import DartDatabase
 
+# Get the absolute path to the database
+SCRIPT_DIR = Path(__file__).parent.resolve()
+DB_PATH = SCRIPT_DIR.parent / "goldenstat.db"
+
 class NewSeasonImporter:
-    def __init__(self, db_path: str = "goldenstat.db"):
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            db_path = str(DB_PATH)
         self.db = DartDatabase(db_path)
         self.session = requests.Session()
         self.session.headers.update({

@@ -5,12 +5,19 @@ Smart Import Handler för att hantera våra mappningar och separationer
 import sqlite3
 import re
 import unicodedata
+from pathlib import Path
 from collections import defaultdict
+
+# Get the absolute path to the database
+SCRIPT_DIR = Path(__file__).parent.resolve()
+DB_PATH = SCRIPT_DIR.parent / "goldenstat.db"
 
 class SmartPlayerMatcher:
     """Hanterar intelligent matchning av spelare vid import"""
 
-    def __init__(self, db_path="goldenstat.db"):
+    def __init__(self, db_path=None):
+        if db_path is None:
+            db_path = str(DB_PATH)
         self.db_path = db_path
         self.separated_players = {}  # basnamn -> [klubb-varianter]
         self.mapped_players = {}     # original_namn -> correct_namn

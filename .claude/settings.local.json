@@ -4,7 +4,9 @@
       "Bash(git branch:*)",
       "Bash(git fetch:*)",
       "Bash(git remote set-head:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(python -c \"import database; print(''database.py OK'')\")",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

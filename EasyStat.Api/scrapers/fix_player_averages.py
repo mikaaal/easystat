@@ -7,8 +7,15 @@ Handles TWO different checkout data formats from nakka/dartconnect API:
 """
 
 import sqlite3
+from pathlib import Path
 
-def calculate_correct_average(db_path='goldenstat.db'):
+# Get the absolute path to the database
+SCRIPT_DIR = Path(__file__).parent.resolve()
+DB_PATH = SCRIPT_DIR.parent / "goldenstat.db"
+
+def calculate_correct_average(db_path=None):
+    if db_path is None:
+        db_path = str(DB_PATH)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 

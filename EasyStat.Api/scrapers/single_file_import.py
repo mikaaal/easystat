@@ -9,6 +9,12 @@ import os
 from pathlib import Path
 from smart_season_importer import SmartSeasonImporter
 
+# Get the absolute paths
+SCRIPT_DIR = Path(__file__).parent.resolve()
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+DB_PATH = SCRIPT_DIR.parent / "goldenstat.db"
+URLS_DIR = PROJECT_ROOT / "current_match_urls"
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python single_file_import.py <filename>")
@@ -18,12 +24,12 @@ def main():
     filename = sys.argv[1]
 
     # Hitta filen i current_match_urls mappen
-    url_file = Path("current_match_urls") / filename
+    url_file = URLS_DIR / filename
 
     if not url_file.exists():
         print(f"Fil hittades inte: {url_file}")
         print("Tillgängliga filer:")
-        for file in Path("current_match_urls").glob("*_match_urls*.txt"):
+        for file in URLS_DIR.glob("*_match_urls*.txt"):
             print(f"  - {file.name}")
         return
 
@@ -36,7 +42,7 @@ def main():
     print(f"Division ID: {division_id}")
 
     # Skapa smart importer
-    importer = SmartSeasonImporter("goldenstat.db")
+    importer = SmartSeasonImporter(str(DB_PATH))
 
     try:
         # Kör importen

@@ -5,15 +5,22 @@ Baserad på NewSeasonImporter men med intelligent spelarmappning
 """
 import time
 import sqlite3
+from pathlib import Path
 from typing import List, Dict, Optional
 from new_season_importer import NewSeasonImporter
 from smart_import_handler import SmartPlayerMatcher
 import datetime
 
+# Get the absolute path to the database
+SCRIPT_DIR = Path(__file__).parent.resolve()
+DB_PATH = SCRIPT_DIR.parent / "goldenstat.db"
+
 class SmartSeasonImporter(NewSeasonImporter):
     """Season importer med automatisk intelligent spelarmappning"""
 
-    def __init__(self, db_path: str = "goldenstat.db"):
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            db_path = str(DB_PATH)
         super().__init__(db_path)
         self.matcher = SmartPlayerMatcher(db_path)
         self.import_log = {
