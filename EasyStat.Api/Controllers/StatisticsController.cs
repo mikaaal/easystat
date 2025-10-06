@@ -24,7 +24,7 @@ public class StatisticsController : ControllerBase
 
     [HttpGet("sub_match/{subMatchId}/throws/{playerName}")]
     public async Task<ActionResult<SubMatchThrowsDto>> GetSubMatchThrows(
-        int subMatchId, 
+        int subMatchId,
         string playerName)
     {
         var result = await _statisticsService.GetSubMatchThrowsAsync(subMatchId, playerName);
@@ -32,5 +32,12 @@ public class StatisticsController : ControllerBase
             return NotFound(new { error = "Player did not participate in this sub-match" });
 
         return Ok(result);
+    }
+
+    [HttpGet("top-stats")]
+    public async Task<ActionResult<TopStatsDto>> GetTopStats([FromQuery] string? season = null)
+    {
+        var stats = await _statisticsService.GetTopStatsAsync(season);
+        return Ok(stats);
     }
 }

@@ -8,6 +8,7 @@ public interface IStatisticsService
 {
     Task<OverviewDto> GetOverviewAsync();
     Task<SubMatchThrowsDto?> GetSubMatchThrowsAsync(int subMatchId, string playerName);
+    Task<TopStatsDto> GetTopStatsAsync(string? season = null);
 }
 
 public class StatisticsService : IStatisticsService
@@ -184,6 +185,150 @@ public class StatisticsService : IStatisticsService
             ShortLegs = 0, // Calculate if needed
             HighFinishes = 0, // Calculate if needed
             First9DartAvg = 0 // Calculate if needed
+        };
+    }
+
+    public async Task<TopStatsDto> GetTopStatsAsync(string? season = null)
+    {
+        // Top 10 Averages (Singles only)
+        var topAveragesQuery = _context.SubMatchParticipants
+            .Include(smp => smp.Player)
+            .Include(smp => smp.SubMatch)
+                .ThenInclude(sm => sm.Match)
+                    .ThenInclude(m => m.Team1)
+            .Include(smp => smp.SubMatch)
+                .ThenInclude(sm => sm.Match)
+                    .ThenInclude(m => m.Team2)
+            .Where(smp => smp.SubMatch.MatchType == "Singles" && smp.PlayerAvg.HasValue && smp.PlayerAvg.Value > 0);
+
+        if (!string.IsNullOrEmpty(season))
+        {
+            topAveragesQuery = topAveragesQuery.Where(smp => smp.SubMatch.Match.Season == season);
+        }
+
+        var topAverages = await topAveragesQuery
+            .OrderByDescending(smp => smp.PlayerAvg)
+            .Take(10)
+            .Select(smp => new TopAverageDto
+            {
+                PlayerName = smp.Player.Name,
+                Average = smp.PlayerAvg!.Value,
+                TeamName = smp.TeamNumber == 1 ? smp.SubMatch.Match.Team1.Name : smp.SubMatch.Match.Team2.Name,
+                OpponentName = smp.TeamNumber == 1 ? smp.SubMatch.Match.Team2.Name : smp.SubMatch.Match.Team1.Name,
+                MatchDate = smp.SubMatch.Match.MatchDate,
+                SubMatchId = smp.SubMatch.Id
+            })
+            .ToListAsync();
+
+        // Top 10 Checkouts
+        var topCheckoutsQuery = from t in _context.Throws
+                               join l in _context.Legs on t.LegId equals l.Id
+                               join sm in _context.SubMatches on l.SubMatchId equals sm.Id
+                               join m in _context.Matches on sm.MatchId equals m.Id
+                               join t1 in _context.Teams on m.Team1Id equals t1.Id
+                               join t2 in _context.Teams on m.Team2Id equals t2.Id
+                               join smp in _context.SubMatchParticipants on new { sm.Id, t.TeamNumber } equals new { smp.SubMatch.Id, smp.TeamNumber }
+                               join p in _context.Players on smp.PlayerId equals p.Id
+                               where t.RemainingScore == 0
+                                     && t.Score > 0
+                                     && sm.MatchType == "Singles"
+                                     && t.TeamNumber == l.WinnerTeam
+                               select new { Throw = t, Leg = l, SubMatch = sm, Match = m, Team1 = t1, Team2 = t2, Player = p, Participant = smp };
+
+        if (!string.IsNullOrEmpty(season))
+        {
+            topCheckoutsQuery = topCheckoutsQuery.Where(x => x.Match.Season == season);
+        }
+
+        var topCheckouts = await topCheckoutsQuery
+            .OrderByDescending(x => x.Throw.Score)
+            .ThenByDescending(x => x.Match.MatchDate)
+            .Take(10)
+            .Select(x => new TopCheckoutDto
+            {
+                PlayerName = x.Player.Name,
+                Checkout = x.Throw.Score,
+                TeamName = x.Participant.TeamNumber == 1 ? x.Team1.Name : x.Team2.Name,
+                OpponentName = x.Participant.TeamNumber == 1 ? x.Team2.Name : x.Team1.Name,
+                MatchDate = x.Match.MatchDate,
+                SubMatchId = x.SubMatch.Id
+            })
+            .ToListAsync();
+
+        // Top 10 Shortest Legs (fewest darts)
+        var shortestLegsQuery = from l in _context.Legs
+                               join sm in _context.SubMatches on l.SubMatchId equals sm.Id
+                               join m in _context.Matches on sm.MatchId equals m.Id
+                               join t1 in _context.Teams on m.Team1Id equals t1.Id
+                               join t2 in _context.Teams on m.Team2Id equals t2.Id
+                               join smp in _context.SubMatchParticipants on new { sm.Id, l.WinnerTeam } equals new { smp.SubMatch.Id, WinnerTeam = smp.TeamNumber }
+                               join p in _context.Players on smp.PlayerId equals p.Id
+                               where sm.MatchType == "Singles"
+                               let totalDarts = _context.Throws
+                                   .Where(t => t.LegId == l.Id && t.TeamNumber == l.WinnerTeam && !(t.Score == 0 && t.RemainingScore == 501))
+                                   .Sum(t => t.DartsUsed > 0 ? t.DartsUsed : 3)
+                               where totalDarts > 0
+                               select new { Leg = l, SubMatch = sm, Match = m, Team1 = t1, Team2 = t2, Player = p, Participant = smp, TotalDarts = totalDarts };
+
+        if (!string.IsNullOrEmpty(season))
+        {
+            shortestLegsQuery = shortestLegsQuery.Where(x => x.Match.Season == season);
+        }
+
+        var shortestLegs = await shortestLegsQuery
+            .OrderBy(x => x.TotalDarts)
+            .ThenByDescending(x => x.Match.MatchDate)
+            .Take(10)
+            .Select(x => new ShortestLegDto
+            {
+                PlayerName = x.Player.Name,
+                Darts = x.TotalDarts,
+                TeamName = x.Participant.TeamNumber == 1 ? x.Team1.Name : x.Team2.Name,
+                OpponentName = x.Participant.TeamNumber == 1 ? x.Team2.Name : x.Team1.Name,
+                MatchDate = x.Match.MatchDate,
+                SubMatchId = x.SubMatch.Id
+            })
+            .ToListAsync();
+
+        // Top 10 Most 180s in a match
+        var most180sQuery = from sm in _context.SubMatches
+                           join m in _context.Matches on sm.MatchId equals m.Id
+                           join t1 in _context.Teams on m.Team1Id equals t1.Id
+                           join t2 in _context.Teams on m.Team2Id equals t2.Id
+                           join smp in _context.SubMatchParticipants on sm.Id equals smp.SubMatchId
+                           join p in _context.Players on smp.PlayerId equals p.Id
+                           where sm.MatchType == "Singles"
+                           let count180 = _context.Throws
+                               .Count(t => t.Leg.SubMatchId == sm.Id && t.TeamNumber == smp.TeamNumber && t.Score == 180)
+                           where count180 > 0
+                           select new { SubMatch = sm, Match = m, Team1 = t1, Team2 = t2, Player = p, Participant = smp, Count180 = count180 };
+
+        if (!string.IsNullOrEmpty(season))
+        {
+            most180sQuery = most180sQuery.Where(x => x.Match.Season == season);
+        }
+
+        var most180s = await most180sQuery
+            .OrderByDescending(x => x.Count180)
+            .ThenByDescending(x => x.Match.MatchDate)
+            .Take(10)
+            .Select(x => new Most180sDto
+            {
+                PlayerName = x.Player.Name,
+                Count180 = x.Count180,
+                TeamName = x.Participant.TeamNumber == 1 ? x.Team1.Name : x.Team2.Name,
+                OpponentName = x.Participant.TeamNumber == 1 ? x.Team2.Name : x.Team1.Name,
+                MatchDate = x.Match.MatchDate,
+                SubMatchId = x.SubMatch.Id
+            })
+            .ToListAsync();
+
+        return new TopStatsDto
+        {
+            TopAverages = topAverages,
+            TopCheckouts = topCheckouts,
+            ShortestLegs = shortestLegs,
+            Most180s = most180s
         };
     }
 }

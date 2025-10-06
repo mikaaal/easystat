@@ -6,7 +6,8 @@
       "Bash(git remote set-head:*)",
       "Bash(git push:*)",
       "Bash(python -c \"import database; print(''database.py OK'')\")",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Read(//c/DEVTOOLS/development/goldenstat/**)"
     ],
     "deny": [],
     "ask": []

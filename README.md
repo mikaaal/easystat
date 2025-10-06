@@ -34,7 +34,7 @@ easystat/
 │   ├── DTOs/                  # Data transfer objects
 │   ├── Data/                  # DbContext
 │   └── goldenstat.db         # SQLite database
-├── easystat-vue/              # Vue 3 Frontend
+├── EasyStat.Web/              # Vue 3 Frontend
 │   ├── src/
 │   │   ├── components/       # Vue components
 │   │   ├── views/            # Page views
@@ -73,7 +73,7 @@ dotnet run
 ### Frontend Setup
 
 ```bash
-cd easystat-vue
+cd EasyStat.Web
 
 # Install dependencies
 npm install
@@ -108,8 +108,13 @@ python new_format_importer.py <match_url>
 - `GET /api/players/{name}` - Get player statistics
 - `GET /api/players/{name}/throws` - Get throw analysis
 
+### Teams
+- `GET /api/teams` - Get all teams
+- `GET /api/teams/lineup?teamName={name}&season={season}&division={division}` - Get team lineup
+
 ### Statistics
 - `GET /api/overview` - Get database overview
+- `GET /api/top-stats?season={season}` - Get top 10 statistics
 - `GET /api/sub_match/{id}/throws/{playerName}` - Get detailed match throws
 
 ## 🗄️ Database

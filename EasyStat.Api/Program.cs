@@ -19,6 +19,7 @@ builder.Services.AddAutoMapper(typeof(Program));
 // Services
 builder.Services.AddScoped<IPlayerService, PlayerService>();
 builder.Services.AddScoped<IMatchService, MatchService>();
+builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<IStatisticsService, StatisticsService>();
 
 // CORS - Allow Vue frontend
