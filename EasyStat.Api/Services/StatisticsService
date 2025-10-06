@@ -1,0 +1,189 @@
+using EasyStat.Api.Data;
+using EasyStat.Api.DTOs;
+using Microsoft.EntityFrameworkCore;
+
+namespace EasyStat.Api.Services;
+
+public interface IStatisticsService
+{
+    Task<OverviewDto> GetOverviewAsync();
+    Task<SubMatchThrowsDto?> GetSubMatchThrowsAsync(int subMatchId, string playerName);
+}
+
+public class StatisticsService : IStatisticsService
+{
+    private readonly EasyStatDbContext _context;
+
+    public StatisticsService(EasyStatDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<OverviewDto> GetOverviewAsync()
+    {
+        var totalPlayers = await _context.Players.CountAsync();
+        var totalMatches = await _context.Matches.CountAsync();
+        var totalSubMatches = await _context.SubMatches.CountAsync();
+        var totalLegs = await _context.Legs.CountAsync();
+        var totalThrows = await _context.Throws.CountAsync();
+
+        var recentMatches = await _context.Matches
+            .Include(m => m.Team1)
+            .Include(m => m.Team2)
+            .OrderByDescending(m => m.ScrapedAt)
+            .Take(5)
+            .Select(m => new RecentMatchDto
+            {
+                Team1 = m.Team1.Name,
+                Team2 = m.Team2.Name,
+                Team1Score = m.Team1Score,
+                Team2Score = m.Team2Score,
+                ScrapedAt = m.ScrapedAt
+            })
+            .ToListAsync();
+
+        return new OverviewDto
+        {
+            TotalPlayers = totalPlayers,
+            TotalMatches = totalMatches,
+            TotalSubMatches = totalSubMatches,
+            TotalLegs = totalLegs,
+            TotalThrows = totalThrows,
+            RecentMatches = recentMatches
+        };
+    }
+
+    public async Task<SubMatchThrowsDto?> GetSubMatchThrowsAsync(int subMatchId, string playerName)
+    {
+        var player = await _context.Players
+            .FirstOrDefaultAsync(p => p.Name == playerName);
+
+        if (player == null)
+            return null;
+
+        var subMatch = await _context.SubMatches
+            .Include(sm => sm.Match)
+                .ThenInclude(m => m.Team1)
+            .Include(sm => sm.Match)
+                .ThenInclude(m => m.Team2)
+            .Include(sm => sm.Participants)
+                .ThenInclude(p => p.Player)
+            .Include(sm => sm.Legs)
+                .ThenInclude(l => l.Throws)
+            .FirstOrDefaultAsync(sm => sm.Id == subMatchId);
+
+        if (subMatch == null)
+            return null;
+
+        var participation = subMatch.Participants.FirstOrDefault(p => p.PlayerId == player.Id);
+        if (participation == null)
+            return null;
+
+        var opposingTeamNumber = participation.TeamNumber == 1 ? 2 : 1;
+        var opponents = subMatch.Participants
+            .Where(p => p.TeamNumber == opposingTeamNumber)
+            .Select(p => p.Player.Name)
+            .ToList();
+
+        var opponentNames = opponents.Count > 1 
+            ? string.Join(" + ", opponents) 
+            : opponents.FirstOrDefault() ?? "Unknown";
+
+        var legs = subMatch.Legs.Select(leg => new LegWithThrowsDto
+        {
+            LegNumber = leg.LegNumber,
+            WinnerTeam = leg.WinnerTeam,
+            LegTotalRounds = leg.TotalRounds,
+            PlayerWonLeg = leg.WinnerTeam == participation.TeamNumber,
+            PlayerThrows = leg.Throws
+                .Where(t => t.TeamNumber == participation.TeamNumber)
+                .Select(t => new ThrowInLegDto
+                {
+                    RoundNumber = t.RoundNumber,
+                    Score = t.Score,
+                    RemainingScore = t.RemainingScore,
+                    DartsUsed = t.DartsUsed,
+                    LegNumber = leg.LegNumber
+                })
+                .OrderBy(t => t.RoundNumber)
+                .ToList(),
+            OpponentThrows = leg.Throws
+                .Where(t => t.TeamNumber == opposingTeamNumber)
+                .Select(t => new ThrowInLegDto
+                {
+                    RoundNumber = t.RoundNumber,
+                    Score = t.Score,
+                    RemainingScore = t.RemainingScore,
+                    DartsUsed = t.DartsUsed,
+                    LegNumber = leg.LegNumber
+                })
+                .OrderBy(t => t.RoundNumber)
+                .ToList()
+        }).ToList();
+
+        var playerThrows = legs.SelectMany(l => l.PlayerThrows).ToList();
+        var opponentThrows = legs.SelectMany(l => l.OpponentThrows).ToList();
+
+        var playerStats = CalculatePlayerStatsInMatch(playerThrows, participation.TeamNumber, legs, participation.PlayerAvg);
+        var opponentAvg = subMatch.Participants
+            .Where(p => p.TeamNumber == opposingTeamNumber)
+            .Average(p => p.PlayerAvg ?? 0);
+        var opponentStats = CalculatePlayerStatsInMatch(opponentThrows, opposingTeamNumber, legs, opponentAvg);
+
+        return new SubMatchThrowsDto
+        {
+            SubMatchInfo = new SubMatchInfoDto
+            {
+                Id = subMatch.Id,
+                MatchType = subMatch.MatchType,
+                MatchName = subMatch.MatchName ?? "",
+                Team1Legs = subMatch.Team1Legs,
+                Team2Legs = subMatch.Team2Legs,
+                PlayerAvg = participation.PlayerAvg,
+                MatchDate = subMatch.Match.MatchDate,
+                Team1Name = subMatch.Match.Team1.Name,
+                Team2Name = subMatch.Match.Team2.Name,
+                TeamNumber = participation.TeamNumber
+            },
+            PlayerName = playerName,
+            OpponentNames = opponentNames,
+            Legs = legs,
+            PlayerStatistics = playerStats,
+            OpponentStatistics = opponentStats
+        };
+    }
+
+    private PlayerStatsInMatchDto CalculatePlayerStatsInMatch(
+        List<ThrowInLegDto> throws, 
+        int teamNumber, 
+        List<LegWithThrowsDto> legs,
+        decimal? avgFromDb)
+    {
+        var scores = throws.Where(t => t.Score >= 0).Select(t => t.Score).ToList();
+        var totalScore = scores.Sum();
+        var totalThrows = throws.Count;
+
+        var legsWon = legs.Count(l => l.WinnerTeam == teamNumber);
+
+        return new PlayerStatsInMatchDto
+        {
+            TotalThrows = totalThrows,
+            TotalScore = totalScore,
+            AverageScore = avgFromDb ?? 0,
+            MaxScore = scores.Any() ? scores.Max() : 0,
+            LegsWon = legsWon,
+            LegsTotal = legs.Count,
+            Throws100_139 = scores.Count(s => s >= 100 && s < 140),
+            Throws140_179 = scores.Count(s => s >= 140 && s < 180),
+            Throws180 = scores.Count(s => s == 180),
+            Throws100PlusTotal = scores.Count(s => s >= 100),
+            ThrowsUnder20 = scores.Count(s => s < 20),
+            Throws60Plus = scores.Count(s => s >= 60),
+            TotalCheckouts = throws.Count(t => t.RemainingScore == 0),
+            CheckoutDarts = 0, // Calculate if needed
+            ShortLegs = 0, // Calculate if needed
+            HighFinishes = 0, // Calculate if needed
+            First9DartAvg = 0 // Calculate if needed
+        };
+    }
+}
